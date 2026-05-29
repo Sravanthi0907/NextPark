@@ -1,10 +1,10 @@
-# DriveLock Pro - Parking Stand Access Management System
+# NextPark - Parking Stand Access Management System
 
 A Flask-based web application for managing parking stand reservations with dynamic QR code access control and real-time synchronization across all users.
 
 ## Overview
 
-DriveLock Pro is an intelligent parking management system that allows users to book parking stands and control access through personal QR codes. The system features:
+NextPark is an intelligent parking management system that allows users to book parking stands and control access through personal QR codes. The system features:
 
 - **Personal QR Code Access**: Each user has a unique QR code for stand access
 - **Dynamic Open/Close Toggle**: QR scans toggle stand status (odd scans = open, even scans = closed)
