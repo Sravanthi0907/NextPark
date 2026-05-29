@@ -366,19 +366,11 @@ def verify_qr_access():
             "message": "Booking is not active. Check payment and booking window."
         })
 
-    user = current_user()
-
     scanned = decode_qr(image_data)
-    
-    print("========== QR DEBUG ==========")
-    print("Scanned QR:", scanned)
-    print("Current User:", user["username"])
-    print("Expected Token:", user["qrToken"])
-    print("=============================")
-
     if not scanned:
         return jsonify({"success": False, "message": "No QR code detected. Try again."})
 
+    user = current_user()
     if scanned != user["qrToken"]:
         return jsonify({
             "success": False,
