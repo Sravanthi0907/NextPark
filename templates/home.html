@@ -1,0 +1,24 @@
+{% extends "layout.html" %}
+{% block title %}Dashboard — DriveLock Pro{% endblock %}
+{% block content %}
+<div class="hero">
+    <span class="hero-badge">Parking Management</span>
+    <div class="page-header" style="margin-bottom: 2rem;">
+        <h1>Welcome back, {{ session.get('username', 'User') }}</h1>
+        <p>Reserve a slot, scan your QR at the stand when your session starts, and track everything in your activity log.</p>
+    </div>
+</div>
+<div class="card-grid">
+    <a href="{{ url_for('booking') }}" class="card feature-card">
+        <div class="icon"><i class="fas fa-square-parking"></i></div>
+        <h3>Reserve Slot</h3>
+        <p>Book by date, time, and vehicle type with instant fee calculation.</p>
+    </a>
+    
+    <a href="{{ url_for('profile') }}" class="card feature-card">
+        <div class="icon"><i class="fas fa-qrcode"></i></div>
+        <h3>My QR</h3>
+        <p>Your unique access code — required to open your parking stand.</p>
+    </a>
+</div>
+{% endblock %}

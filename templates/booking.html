@@ -1,0 +1,150 @@
+{% extends "layout.html" %}
+{% block title %}Reserve Slot — DriveLock Pro{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>Reserve Slot</h1>
+    <p>Select an available stand and complete your booking details.</p>
+</div>
+
+<div class="stand-grid">
+    <div class="stand-tile" data-stand="1" onclick="openBooking(1)">
+        <i class="fas fa-parking"></i>
+        <span>Stand 1</span>
+    </div>
+    <div class="stand-tile" data-stand="2" onclick="openBooking(2)">
+        <i class="fas fa-parking"></i>
+        <span>Stand 2</span>
+    </div>
+</div>
+
+<div class="modal-overlay" id="bookingModal">
+    <div class="modal-panel">
+        <h2>Book Stand <span id="standLabel"></span></h2>
+        <p class="modal-sub">Enter your parking schedule and vehicle type.</p>
+        <div class="form-group">
+            <label for="bookingDate">Date</label>
+            <input type="date" id="bookingDate" class="form-control" required>
+        </div>
+        <div class="form-group">
+            <label for="startTime">Start Time</label>
+            <input type="time" id="startTime" class="form-control" required>
+        </div>
+        <div class="form-group">
+            <label for="endTime">End Time</label>
+            <input type="time" id="endTime" class="form-control" required>
+        </div>
+        <div class="form-group">
+            <label for="vehicleType">Vehicle Type</label>
+            <select id="vehicleType" class="form-control" required>
+                {% for vtype in vehicle_types %}
+                <option value="{{ vtype }}">{{ vtype }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="fee-preview" id="feePreview">Enter details to calculate fee</div>
+        <div class="modal-actions">
+            <button type="button" class="btn btn-primary" onclick="confirmBooking()">Confirm & Pay</button>
+            <button type="button" class="btn btn-secondary" onclick="closeBookingModal()">Cancel</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let currentStand = null;
+    let lastFee = null;
+    const loginUrl = "{{ url_for('login') }}";
+
+    document.getElementById('bookingDate').min = new Date().toISOString().split('T')[0];
+    ['bookingDate', 'startTime', 'endTime', 'vehicleType'].forEach(id => {
+        document.getElementById(id).addEventListener('change', updateFeePreview);
+    });
+
+    function openBooking(standNumber) {
+        if (document.querySelector(`[data-stand="${standNumber}"]`).classList.contains('reserved')) return;
+        currentStand = standNumber;
+        document.getElementById('standLabel').textContent = standNumber;
+        document.getElementById('bookingModal').classList.add('show');
+        updateFeePreview();
+    }
+
+    function closeBookingModal() {
+        document.getElementById('bookingModal').classList.remove('show');
+        currentStand = null;
+        lastFee = null;
+    }
+
+    function updateFeePreview() {
+        const bookingDate = document.getElementById('bookingDate').value;
+        const startTime = document.getElementById('startTime').value;
+        const endTime = document.getElementById('endTime').value;
+        const vehicleType = document.getElementById('vehicleType').value;
+        const feeBox = document.getElementById('feePreview');
+        if (!bookingDate || !startTime || !endTime) {
+            feeBox.textContent = 'Enter details to calculate fee';
+            return;
+        }
+        fetch('/api/calculate_fee', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({ bookingDate, startTime, endTime, vehicleType })
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                lastFee = data;
+                feeBox.textContent = `${data.vehicleType} · ${data.hours} hr(s) · ₹${data.amount} total`;
+            } else {
+                lastFee = null;
+                feeBox.textContent = data.message || 'Invalid time range';
+            }
+        });
+    }
+
+    function confirmBooking() {
+        if (!currentStand || !lastFee) {
+            alert('Please complete all fields with a valid time range.');
+            return;
+        }
+        fetch('/save_booking', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({
+                standNumber: currentStand,
+                bookingDate: document.getElementById('bookingDate').value,
+                startTime: document.getElementById('startTime').value,
+                endTime: document.getElementById('endTime').value,
+                vehicleType: document.getElementById('vehicleType').value,
+                paymentStatus: 'Successful'
+            })
+        })
+        .then(r => {
+            if (r.status === 401) { window.location.href = loginUrl; return; }
+            return r.json();
+        })
+        .then(data => {
+            if (data && data.success) {
+                alert(`Booking confirmed — ₹${data.fee.amount} paid.`);
+                window.location.href = "{{ url_for('history') }}";
+            } else if (data) alert(data.message || 'Booking failed.');
+        });
+    }
+
+    window.addEventListener('load', () => {
+        fetch('/get_history', { credentials: 'same-origin' })
+            .then(r => r.ok ? r.json() : [])
+            .then(history => {
+                const now = new Date();
+                history.forEach(entry => {
+                    if (new Date(entry.endTime) > now && entry.paymentStatus === 'Successful') {
+                        const el = document.querySelector(`[data-stand="${entry.standNumber}"]`);
+                        if (el) el.classList.add('reserved');
+                    }
+                });
+            });
+    });
+</script>
+{% endblock %}

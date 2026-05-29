@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    {% include '_head.html' %}
+    <title>Register — DriveLock Pro</title>
+</head>
+<body class="auth-page">
+    <div class="auth-card">
+        <a href="{{ url_for('register') }}" class="logo">
+            <i class="fas fa-shield-halved"></i>
+            DriveLock Pro
+        </a>
+        <h1>Create account</h1>
+        <p class="auth-sub">Get your unique QR code for secure parking access</p>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        {% for category, message in messages %}
+        <div class="flash flash-{{ category }}" style="position:static;margin-bottom:1rem;">{{ message }}</div>
+        {% endfor %}
+        {% endif %}
+        {% endwith %}
+        <form method="post">
+            <div class="form-group">
+                <label for="username">Username</label>
+                <input type="text" id="username" name="username" class="form-control" required>
+            </div>
+            <div class="form-group">
+                <label for="email">Email</label>
+                <input type="email" id="email" name="email" class="form-control" required>
+            </div>
+            <div class="form-group">
+                <label for="vehicle_reg">Vehicle Registration</label>
+                <input type="text" id="vehicle_reg" name="vehicle_reg" class="form-control" placeholder="e.g. ABC-1234" required>
+            </div>
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" class="form-control" minlength="6" required>
+            </div>
+            <div class="form-group">
+                <label for="confirm_password">Confirm Password</label>
+                <input type="password" id="confirm_password" name="confirm_password" class="form-control" required>
+            </div>
+            <button type="submit" class="btn btn-primary">Create Account</button>
+        </form>
+        <p class="auth-footer">Already registered? <a href="{{ url_for('login') }}">Login</a></p>
+    </div>
+</body>
+</html>

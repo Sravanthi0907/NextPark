@@ -1,0 +1,33 @@
+<nav class="navbar">
+    <a href="{{ url_for('home') }}" class="logo">
+        <i class="fas fa-shield-halved"></i>
+         NextPark
+    </a>
+    {% if session.get('user_id') %}
+    <div class="nav-links">
+        <a href="{{ url_for('home') }}" {% if request.endpoint == 'home' %}class="active"{% endif %}>
+            <i class="fas fa-house"></i> Dashboard
+        </a>
+        <a href="{{ url_for('booking') }}" {% if request.endpoint == 'booking' %}class="active"{% endif %}>
+            <i class="fas fa-square-parking"></i> Reserve Slot
+        </a>
+        <a href="{{ url_for('history') }}" {% if request.endpoint == 'history' %}class="active"{% endif %}>
+            <i class="fas fa-clock-rotate-left"></i> Activity Log
+        </a>
+        <a href="{{ url_for('profile') }}" {% if request.endpoint == 'profile' %}class="active"{% endif %}>
+            <i class="fas fa-qrcode"></i> My QR
+        </a>
+    </div>
+    <div class="nav-auth">
+        <form action="{{ url_for('logout') }}" method="post">
+            <button type="submit" class="btn btn-secondary btn-sm">Logout</button>
+        </form>
+    </div>
+    {% else %}
+    <div class="nav-auth">
+        <a href="{{ url_for('login') }}" class="btn btn-secondary btn-sm">Login</a>
+        <a href="{{ url_for('register') }}" class="btn btn-primary btn-sm">Register</a>
+    </div>
+    {% endif %}
+</nav>
+{% include '_flash.html' %}

@@ -1,0 +1,29 @@
+{% extends "layout.html" %}
+{% block title %}My QR — DriveLock Pro{% endblock %}
+{% block content %}
+<div class="page-header" style="text-align: center;">
+    <h1>My QR Code</h1>
+    <p>Your unique parking access code. Scan this at the stand during your active booking.</p>
+</div>
+
+<div class="card qr-showcase">
+    {% if user.qrImagePath %}
+    <div class="qr-frame">
+        <img src="{{ url_for('serve_user_qr', filename=user.qrImagePath.split('/')[-1]) }}" alt="Your QR Code">
+    </div>
+    {% else %}
+    <p class="modal-sub">QR code is being generated…</p>
+    {% endif %}
+
+    <a href="{{ url_for('api_qr_download') }}" class="btn btn-primary">
+        <i class="fas fa-download"></i> Download QR (.jpg)
+    </a>
+
+    <div class="profile-details">
+        <div class="profile-row"><span>Username</span><strong>{{ user.username }}</strong></div>
+        <div class="profile-row"><span>Email</span><strong>{{ user.email }}</strong></div>
+        <div class="profile-row"><span>Vehicle</span><strong>{{ user.vehicleReg }}</strong></div>
+        <p class="token-chip"><strong>Token:</strong> {{ user.qrToken }}</p>
+    </div>
+</div>
+{% endblock %}
