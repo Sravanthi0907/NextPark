@@ -1,4 +1,15 @@
 {
   "users": [
+    {
+      "id": "user_dd19846014",
+      "username": "sravanthi",
+      "email": "sravanthi@gmail.com",
+      "vehicleReg": "ABC123",
+      "qrToken": "DL-168D828C8809",
+      "passwordHash": "scrypt:32768:8:1$LqV0lWZ5aTC1mhFq$da5a27fff2350ef6ddbd1aac242705360b81ba7f08838fdac6753f38ad5f2a305d5c050d5343c1095955d379dfa1074b9e1addf7d13ba2cc97e8bb8d35e0af66",
+      "qrImagePath": "users/DL-168D828C8809.jpg",
+      "active_bookings": [
+      ]
+    }
   ]
 }
