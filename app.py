@@ -367,6 +367,11 @@ def verify_qr_access():
         })
 
     scanned = decode_qr(image_data)
+
+    print("========== QR DEBUG ==========")
+    print("Scanned QR:", scanned)
+    print("=============================")
+
     if not scanned:
         return jsonify({"success": False, "message": "No QR code detected. Try again."})
 
