@@ -1,0 +1,409 @@
+{% extends "layout.html" %}
+{% block title %}Activity Log — NextPark{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>Activity Log</h1>
+    <p>Your bookings and parking access history.</p>
+</div>
+
+<h2 class="section-title">Bookings</h2>
+<div class="table-wrap">
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Stand</th>
+                <th>Date</th>
+                <th>Start</th>
+                <th>End</th>
+                <th>Vehicle</th>
+                <th>Fee</th>
+                <th>Payment</th>
+                <th>Access</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody id="historyTableBody"></tbody>
+    </table>
+</div>
+
+<h2 class="section-title">Parking Activity</h2>
+<div class="table-wrap">
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Time</th>
+                <th>Stand</th>
+                <th>Action</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody id="activityTableBody"></tbody>
+    </table>
+</div>
+
+<div class="modal-overlay scanner-modal" id="qrScannerModal">
+    <div class="modal-panel">
+        <h2><i class="fas fa-qrcode"></i> Scan Your QR</h2>
+        <p class="modal-sub" id="scannerStandInfo">Point your camera at the QR code from My QR</p>
+        <p class="scanner-status" id="cameraStatus">Requesting camera access…</p>
+        <button type="button" class="btn btn-primary btn-sm" id="enableCameraBtn" style="display:none;" onclick="startQrScanner()">Allow Camera</button>
+        <div class="scanner-frame">
+            <video id="qr-video" playsinline autoplay muted></video>
+        </div>
+        <div class="modal-actions">
+            <button type="button" class="btn btn-secondary" onclick="closeQrScanner()">Close</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/jsQR.min.js') }}"></script>
+<script>
+    const loginUrl = "{{ url_for('login') }}";
+    let scanning = false, videoStream = null, activeBookingId = null;
+    let animationFrameId = null, isProcessing = false, lastScanTime = 0, scanStartTime = 0;
+
+    function formatDateTime(iso) { return new Date(iso).toLocaleString(); }
+    function formatDate(iso) { return new Date(iso).toLocaleDateString(); }
+    function formatTime(iso) { return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }
+
+    function bookingAccessState(booking) {
+        const now = new Date(), start = new Date(booking.startTime), end = new Date(booking.endTime);
+        if (booking.paymentStatus !== 'Successful') return 'unpaid';
+        if (now < start) return 'upcoming';
+        if (now > end) return 'expired';
+        if (booking.accessStatus === 'granted') return 'open';
+        return 'ready';
+    }
+
+    function loadParkingActivity() {
+        Promise.all([
+            fetch('/get_qr_history', { credentials: 'same-origin' }).then(r => r.status === 401 ? (location.href = loginUrl, []) : r.json()),
+            fetch('/get_history', { credentials: 'same-origin' }).then(r => r.status === 401 ? (location.href = loginUrl, []) : r.json())
+        ]).then(([qrHistory, bookings]) => {
+            const tbody = document.getElementById('activityTableBody');
+            
+            // Extract expired bookings to display in Parking Activity
+            const expiredActivities = bookings
+                .filter(b => bookingAccessState(b) === 'expired' || b.paymentStatus === 'Expired')
+                .map(b => ({
+                    timestamp: b.endTime,
+                    stand: b.standNumber,
+                    action: 'expired',
+                    status: 'Ended'
+                }));
+            
+            // Combine and sort by timestamp descending
+            const allActivities = [...qrHistory, ...expiredActivities];
+            allActivities.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+            
+            tbody.innerHTML = allActivities.length ? '' : '<tr><td colspan="4">No activity yet.</td></tr>';
+            allActivities.forEach(entry => {
+                const tr = document.createElement('tr');
+                const action = (entry.action || '').replace('_', ' ');
+                tr.innerHTML = `
+                    <td>${formatDateTime(entry.timestamp)}</td>
+                    <td>Stand ${entry.stand}</td>
+                    <td><span class="badge badge-info">${action}</span></td>
+                    <td><span class="badge badge-muted">${entry.status}</span></td>`;
+                tbody.appendChild(tr);
+            });
+        });
+    }
+
+    function loadBookingHistory() {
+        fetch('/get_history', { credentials: 'same-origin' })
+            .then(r => r.status === 401 ? (location.href = loginUrl, []) : r.json())
+            .then(history => {
+                const tbody = document.getElementById('historyTableBody');
+                // Filter out expired bookings from showing in the bookings table
+                const activeBookings = history.filter(b => bookingAccessState(b) !== 'expired' && b.paymentStatus !== 'Expired');
+                tbody.innerHTML = activeBookings.length ? '' : '<tr><td colspan="9">No bookings yet.</td></tr>';
+                activeBookings.forEach(booking => {
+                    const state = bookingAccessState(booking);
+                    const amount = booking.amountPaid || 0;
+                    const dateStr = booking.bookingDate || formatDate(booking.startTime);
+                    let accessHtml = '<span class="badge badge-muted">—</span>';
+                    if (state === 'unpaid') {
+                        if (booking.paymentStatus === 'Failed') {
+                            accessHtml = '<span class="badge badge-danger">Payment Failed</span>';
+                        } else {
+                            accessHtml = '<span class="badge badge-warning">Awaiting payment</span>';
+                        }
+                    }
+                    else if (state === 'upcoming') accessHtml = `<span class="badge badge-muted">Starts ${formatTime(booking.startTime)}</span>`;
+                    else if (state === 'expired') accessHtml = '<span class="badge badge-muted">Ended</span>';
+                    else if (state === 'open') {accessHtml = `<span class="badge badge-access">${booking.standStatus || 'Open'}</span>`;}
+                    else accessHtml = '<span class="badge badge-success">Ready to scan</span>';
+
+                    let actions = '';
+                    if (state === 'unpaid') {
+                        if (booking.paymentStatus === 'Failed') {
+                            // If payment has failed, user has to rebook, cannot pay at history page
+                            actions = `<button class="btn btn-danger btn-sm" onclick="cancelBooking(${booking.id})">Cancel</button>`;
+                        } else {
+                            // Keep original functionality for pending payments
+                            actions = `<button class="btn btn-primary btn-sm" onclick="payBooking(${booking.id}, ${amount})">Pay ₹${amount}</button>
+                                       <button class="btn btn-danger btn-sm" onclick="cancelBooking(${booking.id})">Cancel</button>`;
+                        }
+                    } else if (state === 'open') {
+                        actions = `<button class="btn btn-success btn-sm" onclick="openQrScanner(${booking.id}, ${booking.standNumber})">Access Stand</button>`;
+                    } else if (state === 'ready') {
+                        actions = `<button class="btn btn-success btn-sm" onclick="openQrScanner(${booking.id}, ${booking.standNumber})">Access Stand</button>
+                                   <button class="btn btn-danger btn-sm" onclick="cancelBooking(${booking.id})">Cancel</button>`;
+                    } else if (state === 'upcoming') {
+                        actions = `<button class="btn btn-secondary btn-sm" disabled>Access Stand</button>
+                                   <button class="btn btn-danger btn-sm" onclick="cancelBooking(${booking.id})">Cancel</button>`;
+                    }
+
+                    const payStatus = booking.paymentStatus || 'Failed';
+                    const badgeClass = payStatus === 'Successful' ? 'badge-success' : 'badge-danger';
+
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td><strong>Stand ${booking.standNumber}</strong></td>
+                        <td>${dateStr}</td>
+                        <td>${formatTime(booking.startTime)}</td>
+                        <td>${formatTime(booking.endTime)}</td>
+                        <td>${booking.vehicleType || '—'}</td>
+                        <td>₹${amount}</td>
+                        <td><span class="badge ${badgeClass}">${payStatus}</span></td>
+                        <td>${accessHtml}</td>
+                        <td><div class="actions">${actions}</div></td>`;
+                    tbody.appendChild(tr);
+                });
+            });
+    }
+
+    function payBooking(id, amount) {
+        fetch('/update_payment_status', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin',
+            body: JSON.stringify({ bookingId: id, status: 'Successful', amountPaid: amount })
+        }).then(() => { alert('Payment successful!'); loadBookingHistory(); loadParkingActivity(); });
+    }
+
+    function cancelBooking(id) {
+        if (!confirm('Cancel this booking?')) return;
+        fetch('/cancel_booking', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin',
+            body: JSON.stringify({ bookingId: id })
+        })
+        .then(r => r.json().then(d => ({ ok: r.ok, d })))
+        .then(({ ok, d }) => {
+            alert(ok ? 'Booking cancelled.' : (d.message || 'Could not cancel.'));
+            loadBookingHistory(); loadParkingActivity();
+        });
+    }
+
+    function setCameraStatus(msg, type) {
+        const el = document.getElementById('cameraStatus');
+        el.textContent = msg;
+        el.className = 'scanner-status ' + (type || '');
+    }
+
+    function openQrScanner(bookingId, stand) {
+        if (!navigator.mediaDevices?.getUserMedia) {
+            alert('Use Chrome or Edge at http://localhost:5000 for camera access.');
+            return;
+        }
+        activeBookingId = bookingId;
+        document.getElementById('scannerStandInfo').textContent = `Stand ${stand} — scan your personal QR code`;
+        document.getElementById('enableCameraBtn').style.display = 'none';
+        document.getElementById('qrScannerModal').classList.add('show');
+        startQrScanner();
+    }
+
+    function closeQrScanner() {
+        scanning = false;
+        isProcessing = false;
+        if (animationFrameId) {
+            cancelAnimationFrame(animationFrameId);
+            animationFrameId = null;
+        }
+        if (videoStream) {
+            try {
+                videoStream.getTracks().forEach(t => t.stop());
+            } catch (e) {
+                console.error("Error stopping tracks:", e);
+            }
+        }
+        videoStream = null;
+        document.getElementById('qr-video').srcObject = null;
+        document.getElementById('qrScannerModal').classList.remove('show');
+        activeBookingId = null;
+    }
+
+    async function requestCameraStream() {
+        const attempts = [
+            { video: { facingMode: { ideal: 'environment' } }, audio: false },
+            { video: { facingMode: 'user' }, audio: false },
+            { video: true, audio: false }
+        ];
+        let err;
+        for (const c of attempts) {
+            try { return await navigator.mediaDevices.getUserMedia(c); } catch (e) { err = e; }
+        }
+        throw err;
+    }
+
+    function cameraErrorMessage(err) {
+        if (err?.name === 'NotAllowedError') return 'Camera blocked. Allow access in browser settings, then tap Allow Camera.';
+        if (err?.name === 'NotFoundError') return 'No camera found on this device.';
+        if (err?.name === 'NotReadableError') return 'Camera is in use by another application.';
+        return err?.message || 'Could not access camera.';
+    }
+
+    async function startQrScanner() {
+        if (!activeBookingId) return;
+        scanning = true;
+        isProcessing = false;
+        scanStartTime = Date.now();
+        lastScanTime = 0;
+
+        const video = document.getElementById('qr-video');
+        
+        if (animationFrameId) {
+            cancelAnimationFrame(animationFrameId);
+            animationFrameId = null;
+        }
+        if (videoStream) {
+            try {
+                videoStream.getTracks().forEach(t => t.stop());
+            } catch (e) {
+                console.error("Error stopping tracks:", e);
+            }
+        }
+        setCameraStatus('Requesting camera access…');
+        document.getElementById('enableCameraBtn').style.display = 'none';
+        
+        try {
+            videoStream = await requestCameraStream();
+            video.srcObject = videoStream;
+            await video.play();
+            setCameraStatus('Camera active — align your QR in the frame', 'ready');
+            animationFrameId = requestAnimationFrame(scanFrame);
+        } catch (err) {
+            scanning = false;
+            setCameraStatus(cameraErrorMessage(err), 'error');
+            document.getElementById('enableCameraBtn').style.display = 'inline-flex';
+        }
+    }
+
+    function scanFrame() {
+        if (!scanning || !activeBookingId) return;
+
+        const video = document.getElementById('qr-video');
+        if (video.readyState === video.HAVE_ENOUGH_DATA) {
+            const vWidth = video.videoWidth;
+            const vHeight = video.videoHeight;
+
+            if (vWidth > 0 && vHeight > 0) {
+                const now = Date.now();
+                if (now - lastScanTime > 250 && !isProcessing) {
+                    lastScanTime = now;
+
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+                    // 1. Try to scan cropped central region first
+                    const cropSize = Math.min(vWidth, vHeight) * 0.8;
+                    const sx = (vWidth - cropSize) / 2;
+                    const sy = (vHeight - cropSize) / 2;
+
+                    canvas.width = 360;
+                    canvas.height = 360;
+                    ctx.drawImage(video, sx, sy, cropSize, cropSize, 0, 0, 360, 360);
+
+                    let code = null;
+                    if (typeof window.jsQR === 'function') {
+                        const imageData = ctx.getImageData(0, 0, 360, 360);
+                        code = jsQR(imageData.data, 360, 360, {
+                            inversionAttempts: "attemptBoth"
+                        });
+
+                        // 2. If no code detected in cropped area, fallback to scanning full frame scaled down
+                        if (!code) {
+                            let targetWidth = vWidth;
+                            let targetHeight = vHeight;
+                            const maxDim = 480;
+                            if (vWidth > maxDim || vHeight > maxDim) {
+                                if (vWidth > vHeight) {
+                                    targetWidth = maxDim;
+                                    targetHeight = Math.round((vHeight / vWidth) * maxDim);
+                                } else {
+                                    targetHeight = maxDim;
+                                    targetWidth = Math.round((vWidth / vHeight) * maxDim);
+                                }
+                            }
+                            canvas.width = targetWidth;
+                            canvas.height = targetHeight;
+                            ctx.drawImage(video, 0, 0, vWidth, vHeight, 0, 0, targetWidth, targetHeight);
+                            const fullImageData = ctx.getImageData(0, 0, targetWidth, targetHeight);
+                            code = jsQR(fullImageData.data, targetWidth, targetHeight, {
+                                inversionAttempts: "attemptBoth"
+                            });
+                        }
+                    }
+
+                    if (code && code.data) {
+                        const token = code.data.trim();
+                        handleScannedToken(token);
+                    } else {
+                        const elapsed = Date.now() - scanStartTime;
+                        if (elapsed > 15000) {
+                            scanStartTime = Date.now();
+                            alert("QR Code not detected. Please adjust the QR code's distance, clean your camera lens, and hold steady inside the green frame.");
+                        } else if (elapsed > 7000) {
+                            setCameraStatus('QR not detected. Adjust distance/lighting and hold steady.', 'error');
+                        }
+                    }
+                }
+            }
+        }
+
+        if (scanning) {
+            animationFrameId = requestAnimationFrame(scanFrame);
+        }
+    }
+
+    function handleScannedToken(token) {
+        isProcessing = true;
+        setCameraStatus('Processing scan...', 'processing');
+
+        fetch('/verify_qr_access', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({ bookingId: activeBookingId, scannedText: token })
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                alert(data.message);
+                closeQrScanner();
+                loadBookingHistory();
+                loadParkingActivity();
+            } else {
+                alert(data.message || 'QR code verification failed. Adjust the QR code or use a valid one.');
+                isProcessing = false;
+                scanStartTime = Date.now();
+                setCameraStatus('Camera active — align your QR in the frame', 'ready');
+            }
+        })
+        .catch(err => {
+            console.error("Scan error:", err);
+            alert("Connection error. Resuming scanner.");
+            isProcessing = false;
+            scanStartTime = Date.now();
+            setCameraStatus('Camera active — align your QR in the frame', 'ready');
+        });
+    }
+
+    window.addEventListener('load', () => {
+        loadBookingHistory();
+        loadParkingActivity();
+        setInterval(loadBookingHistory, 30000);
+    });
+</script>
+{% endblock %}
