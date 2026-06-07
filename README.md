@@ -5,7 +5,7 @@
   <img src="https://img.shields.io/badge/Flask-3.x-black?logo=flask" alt="Flask"/>
   <img src="https://img.shields.io/badge/jsQR-Local-green" alt="jsQR"/>
   <img src="https://img.shields.io/badge/Render-Ready-46E3B7?logo=render" alt="Render Ready"/>
-  <img src="https://img.shields.io/badge/License-Proprietary-red" alt="Proprietary License"/>
+  <img src="https://img.shields.io/badge/License-MIT-yellow" alt="MIT License"/>
 </p>
 
 **NextPark** is an intelligent, high-performance, and secure parking stand access management system. It bridges **dynamic client-side image processing** with a **robust Flask backend** to handle real-time reservation updates, secure payments, and dynamic QR code stand toggling.
